@@ -1,0 +1,162 @@
+{{define "content"}}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="flex flex-col lg:flex-row">
+        <div class="lg:w-3/5 p-6 bg-gray-50/50">
+            <div class="aspect-square rounded-xl bg-white border border-gray-200 overflow-hidden mb-4 shadow-inner">
+                <img id="main-view" src="{{.Producto.MainImage}}" alt="{{.Producto.Titulo}}"
+                    class="w-full h-full object-contain p-4 transition-opacity duration-300">
+            </div>
+
+            <div class="grid grid-cols-5 gap-3">
+                {{range .Producto.ImagenesGrandes}}
+                <button onclick="changeView('{{.}}')"
+                    class="aspect-square rounded-lg border-2 border-transparent hover:border-blue-500 overflow-hidden bg-white transition-all shadow-sm focus:border-blue-600 focus:outline-none">
+                    <img src="{{.}}" class="w-full h-full object-cover">
+                </button>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="lg:w-2/5 p-8 flex flex-col">
+            <nav class="text-xs text-gray-400 uppercase tracking-widest mb-4">
+                <a href="/?lang={{.Idioma}}&country={{.PaisActual}}" class="hover:underline">Inicio</a> /
+                <a href="/?cat={{.Producto.Categoria}}&lang={{.Idioma}}&country={{.PaisActual}}"
+                    class="hover:underline">{{.Producto.Categoria}}</a>
+            </nav>
+
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-900 leading-tight mb-4">
+                {{.Producto.Titulo}}
+            </h1>
+
+            <div class="bg-blue-50/50 p-4 rounded-xl mb-6">
+                <div class="text-4xl font-black text-slate-900 mb-2">
+                    {{.Producto.MainPrice}}
+                </div>
+                <div class="flex items-center gap-2 text-green-600 font-bold text-sm">
+                    <i class="fa fa-truck-fast"></i>
+                    {{.Producto.LogisticaInfo}}
+                </div>
+            </div>
+
+            <hr class="mb-6 border-gray-100">
+
+            {{if .Producto.Colores}}
+            <div class="mb-6">
+                <h3 class="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Color: <span id="color-name" class="text-gray-400 font-normal">Selecciona uno</span></h3>
+                <div class="flex flex-wrap gap-2">
+                    {{range .Producto.Colores}}
+                    <button onclick="selectColor('{{.Nombre}}', '{{.Imagen}}')" 
+                        class="color-btn border-2 border-gray-200 rounded-lg p-1 hover:border-yellow-400 transition-all focus:outline-none focus:border-yellow-400"
+                        title="{{.Nombre}}">
+                        <img src="{{.Imagen}}" class="w-12 h-12 object-cover rounded-md">
+                    </button>
+                    {{end}}
+                </div>
+                <input type="hidden" id="selected-color" value="N/A">
+            </div>
+            {{end}}
+
+            {{if .Producto.Tamaños}}
+            <div class="mb-6">
+                <h3 class="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Tamaño:</h3>
+                <div class="flex flex-wrap gap-2">
+                    {{range .Producto.Tamaños}}
+                    <button onclick="selectSize('{{.}}')" 
+                        class="size-btn px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all focus:outline-none focus:bg-slate-900 focus:text-white focus:border-slate-900">
+                        {{.}}
+                    </button>
+                    {{end}}
+                </div>
+                <input type="hidden" id="selected-size" value="N/A">
+            </div>
+            {{end}}
+
+            <div class="mb-8">
+                <h3 class="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider">Cantidad:</h3>
+                <div class="flex items-center w-32 border-2 border-gray-100 rounded-xl overflow-hidden bg-white">
+                    <button onclick="updateQty(-1)" class="w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors">
+                        <i class="fa fa-minus text-xs text-gray-600"></i>
+                    </button>
+                    <input type="number" id="product-qty" value="1" min="1" 
+                        class="w-12 h-10 text-center font-bold text-gray-900 bg-transparent outline-none">
+                    <button onclick="updateQty(1)" class="w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors">
+                        <i class="fa fa-plus text-xs text-gray-600"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-auto space-y-3">
+                <button
+                    onclick="prepareAddToCart()"
+                    class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-3">
+                    <i class="fa fa-cart-shopping"></i>
+                    Agregar al carrito
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Variables de selección
+    function selectColor(nombre, imagen) {
+        document.getElementById('selected-color').value = nombre;
+        document.getElementById('color-name').innerText = nombre;
+        // Opcional: Cambiar la vista principal a la imagen del color
+        changeView(imagen);
+        
+        // Estética: resaltar botón seleccionado
+        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('border-yellow-400'));
+        event.currentTarget.classList.add('border-yellow-400');
+    }
+
+    function selectSize(size) {
+        document.getElementById('selected-size').value = size;
+        
+        // Estética: resaltar botón seleccionado
+        document.querySelectorAll('.size-btn').forEach(b => {
+            b.classList.remove('bg-slate-900', 'text-white', 'border-slate-900');
+        });
+        event.currentTarget.classList.add('bg-slate-900', 'text-white', 'border-slate-900');
+    }
+
+    function changeView(url) {
+        if (!url) return;
+        const main = document.getElementById('main-view');
+        main.style.opacity = '0';
+        setTimeout(() => {
+            main.src = url;
+            main.style.opacity = '1';
+        }, 150);
+    }
+
+    function updateQty(delta) {
+        const input = document.getElementById('product-qty');
+        let current = parseInt(input.value) || 1;
+        let newValue = current + delta;
+        if (newValue < 1) newValue = 1;
+        input.value = newValue;
+    }
+
+    function prepareAddToCart() {
+        const qty = parseInt(document.getElementById('product-qty').value) || 1;
+        const color = document.getElementById('selected-color')?.value || 'N/A';
+        const size = document.getElementById('selected-size')?.value || 'N/A';
+        
+        // LLAMADA FINAL CON TODOS LOS PARÁMETROS INCLUYENDO LA URL DEL JSON
+        if (typeof addToCart === 'function') {
+            addToCart(
+                '{{.Producto.ID}}', 
+                '{{.Producto.Titulo}}', 
+                '{{.Producto.MainPrice}}', 
+                '{{.Producto.MainImage}}', 
+                '{{.Producto.LogisticaInfo}}',
+                qty,
+                color,
+                size,
+                '{{.Producto.URL}}' // <-- La URL de tu productos.json
+            );
+        }
+    }
+</script>
+{{end}}

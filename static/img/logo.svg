@@ -1,0 +1,28 @@
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180">
+            <defs>
+                <linearGradient id="bpGradient" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#E91E63"/>
+                <stop offset="100%" stop-color="#4A235A"/>
+                </linearGradient>
+            </defs>
+
+            <text
+                x="50%"
+                y="50%"
+                text-anchor="middle"
+                dominant-baseline="middle"
+                font-family="Inter, Helvetica Neue, Arial, sans-serif"
+                font-size="72"
+                font-weight="500"
+                letter-spacing="-1"
+                fill="url(#bpGradient)">
+                Beauty Pascal
+            </text>
+
+            <path
+                d="M140 120c90 18 230 18 320 0"
+                fill="none"
+                stroke="#C9A24D"
+                stroke-width="4"
+                stroke-linecap="round"/>
+            </svg>

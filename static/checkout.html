@@ -1,0 +1,269 @@
+{{define "content"}}
+<div class="container mx-auto max-w-6xl px-4 py-8">
+    <h1 class="text-3xl font-black text-slate-900 mb-8 flex items-center gap-3">
+        <i class="fa fa-credit-card text-blue-600"></i> Finalizar Compra
+    </h1>
+
+    <div class="flex flex-col lg:flex-row gap-10">
+        <div class="flex-1 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+            <h2 class="text-xl font-bold mb-6 text-gray-800 border-b pb-4">Información de Envío</h2>
+
+            <form id="checkout-form" class="space-y-6" onsubmit="return false;">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">País o Región</label>
+                    <select id="pais" name="pais"
+                        class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="US" {{if eq .PaisActual "US" }}selected{{end}}>Estados Unidos</option>
+                        <option value="MX" {{if eq .PaisActual "MX" }}selected{{end}}>México</option>
+                        <option value="GT" {{if eq .PaisActual "GT" }}selected{{end}}>Guatemala</option>
+                        <option value="CO" {{if eq .PaisActual "CO" }}selected{{end}}>Colombia</option>
+                        <option value="PE" {{if eq .PaisActual "PE" }}selected{{end}}>Perú</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Nombre</label>
+                        <input type="text" id="nombre" name="nombre" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Apellido</label>
+                        <input type="text" id="apellido" name="apellido" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Email de Contacto</label>
+                        <input type="email" id="email" name="email" placeholder="usuario@ejemplo.com" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Número de Teléfono</label>
+                        <input type="tel" id="telefono" name="telefono" placeholder="+00 000 000 000" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Dirección Completa</label>
+                    <input type="text" id="direccion" name="direccion" placeholder="Calle, número, apto..." required
+                        class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Ciudad</label>
+                        <input type="text" id="ciudad" name="ciudad" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Estado</label>
+                        <input type="text" id="estado" name="estado" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">C.P.</label>
+                        <input type="text" id="codigo_postal" name="codigo_postal" required
+                            class="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-blue-500">
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="w-full lg:w-96">
+            <div class="bg-slate-900 text-white p-8 rounded-3xl shadow-xl sticky top-24">
+                <h2 class="text-xl font-bold mb-6">Tu Pedido (USD)</h2>
+
+                <div id="checkout-list" class="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2 text-sm text-gray-300">
+                </div>
+
+                <hr class="border-slate-800 mb-6">
+
+                <div class="space-y-3 mb-8">
+                    <div class="flex justify-between text-gray-400">
+                        <span>Subtotal</span>
+                        <span id="check-subtotal">$0.00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Envío</span>
+                        <span id="check-shipping" class="text-blue-400 font-bold">$0.00</span>
+                    </div>
+                    <div class="flex justify-between text-2xl font-black text-white pt-4 border-t border-slate-800">
+                        <span>Total</span>
+                        <span id="check-total">$0.00</span>
+                    </div>
+                </div>
+
+                <div id="paypal-button-container" class="z-0"></div>
+                <p id="payment-message" class="hidden text-center text-xs mt-4 text-yellow-400"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script
+    src="https://www.paypal.com/sdk/js?client-id=test&currency=USD"></script>
+
+<script>
+    const TASA_SERVIDOR = parseFloat("{{.Tasa}}") || 1.0;
+    const PAIS_ACTUAL = "{{.PaisActual}}";
+    const FREE_SHIPPING_LIMIT_USD = 100.00;
+
+    function getUsdValue(textValue) {
+        if (!textValue) return 0;
+        let num = parseFloat(textValue.replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
+        if (!textValue.toUpperCase().includes("USD") && TASA_SERVIDOR > 1) {
+            num = num / TASA_SERVIDOR;
+        }
+        return num;
+    }
+
+    function renderCheckout() {
+        const list = document.getElementById('checkout-list');
+        const items = Cart.get();
+
+        if (!items || items.length === 0) {
+            window.location.href = "/?country=" + PAIS_ACTUAL;
+            return;
+        }
+
+        let subtotalUSD = 0;
+        let acumuladoEnvioUSD = 0;
+
+        list.innerHTML = items.map(item => {
+            const pUSD = getUsdValue(item.price);
+            const itemQty = parseInt(item.qty) || 1;
+            const subtotalItem = pUSD * itemQty;
+            subtotalUSD += subtotalItem;
+
+            let envioUSD = 0;
+            if (item.logistica) {
+                let match = item.logistica.match(/(\d+[\.,]\d{2})/);
+                if (match) {
+                    let unitEnvio = parseFloat(match[1].replace(',', '.'));
+                    if (!item.logistica.toUpperCase().includes("USD") && TASA_SERVIDOR > 1) {
+                        unitEnvio = unitEnvio / TASA_SERVIDOR;
+                    }
+                    envioUSD = unitEnvio * itemQty;
+                }
+            }
+            acumuladoEnvioUSD += envioUSD;
+
+            return `
+                <div class="flex justify-between gap-4 border-b border-slate-800 pb-3 mb-2">
+                    <div class="flex-1">
+                        <p class="line-clamp-1 text-white font-medium">
+                            <span class="text-yellow-400 mr-1">${itemQty}x</span> ${item.title}
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-white">$${subtotalItem.toFixed(2)}</p>
+                    </div>
+                </div>`;
+        }).join('');
+
+        if (subtotalUSD >= FREE_SHIPPING_LIMIT_USD) acumuladoEnvioUSD = 0;
+
+        const totalUSD = subtotalUSD + acumuladoEnvioUSD;
+        document.getElementById('check-subtotal').innerText = "$" + subtotalUSD.toFixed(2);
+        document.getElementById('check-shipping').innerText = acumuladoEnvioUSD === 0 ? "¡GRATIS!" : "$" + acumuladoEnvioUSD.toFixed(2);
+        document.getElementById('check-total').innerText = "$" + totalUSD.toFixed(2) + " USD";
+
+        window.currentOrderTotal = totalUSD.toFixed(2);
+    }
+
+    // Integración de PayPal
+    paypal.Buttons({
+        style: {
+            layout: 'vertical',
+            color: 'gold',
+            shape: 'rect',
+            label: 'pay'
+        },
+        // Validar formulario antes de abrir PayPal
+        onClick: function (data, actions) {
+            const form = document.getElementById('checkout-form');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return actions.reject();
+            }
+        },
+        createOrder: function (data, actions) {
+            return actions.order.create({
+                purchase_units: [{
+                    amount: {
+                        value: window.currentOrderTotal
+                    }
+                }]
+            });
+        },
+        onApprove: function (data, actions) {
+            return actions.order.capture().then(function (details) {
+                enviarPedidoAlServidor(details);
+            });
+        },
+        onError: function (err) {
+            alert("Ocurrió un error con el pago de PayPal.");
+        }
+    }).render('#paypal-button-container');
+
+    async function enviarPedidoAlServidor(paymentDetails) {
+        const form = document.getElementById('checkout-form');
+        const formData = new FormData(form);
+        const msg = document.getElementById('payment-message');
+
+        msg.innerText = "Registrando tu pedido...";
+        msg.classList.remove('hidden');
+
+        // Mapeamos los items incluyendo la URL y las variantes para que aparezcan en pedidos.jsonl
+        const productosMapeados = Cart.get().map(item => {
+            // Creamos un título enriquecido para que el dueño de la tienda 
+            // sepa exactamente qué color/talla envió.
+            let tituloCompleto = item.title;
+            if (item.color && item.color !== 'N/A') tituloCompleto += ` (Color: ${item.color})`;
+            if (item.size && item.size !== 'N/A') tituloCompleto += ` (Talla: ${item.size})`;
+
+            return {
+                titulo: tituloCompleto,
+                cantidad: parseInt(item.qty) || 1,
+                url: item.url || "" // Aquí se envía la URL del scraper que recuperamos del JSON
+            };
+        });
+
+        const payload = {
+            id_transaccion_paypal: paymentDetails.id,
+            pais: formData.get('pais'),
+            nombre: formData.get('nombre') + " " + formData.get('apellido'),
+            email: formData.get('email'),
+            telefono: formData.get('telefono'),
+            direccion: `${formData.get('direccion')}, ${formData.get('ciudad')}, ${formData.get('estado')}, CP: ${formData.get('codigo_postal')}`,
+            total_pagado: parseFloat(window.currentOrderTotal),
+            items: productosMapeados
+        };
+
+        try {
+            const response = await fetch('/api/process-checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                localStorage.removeItem('cart');
+                // Redirigir a la página de éxito con el ID del pedido
+                window.location.href = `/success?id=${result.id_pedido}&lang={{.Idioma}}&country=${formData.get('pais')}`;
+            } else {
+                alert('Error al registrar pedido: ' + result.error);
+            }
+        } catch (error) {
+            console.error("Error en el envío:", error);
+            alert('Error crítico de red al procesar el pedido.');
+        }
+    } 
+    document.addEventListener('DOMContentLoaded', renderCheckout);
+</script>
+{{end}}

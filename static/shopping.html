@@ -1,0 +1,234 @@
+{{define "content"}}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <h1 class="text-3xl font-black text-slate-900 flex items-center gap-3">
+            <i class="fa fa-shopping-bag text-yellow-500"></i> Mi Carrito
+        </h1>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+        <div class="flex-1">
+            <div id="free-shipping-threshold" class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6 hidden">
+                <p id="threshold-message" class="text-sm font-bold text-gray-700 mb-2"></p>
+                <div class="w-full bg-gray-100 rounded-full h-2.5">
+                    <div id="threshold-bar" class="bg-green-500 h-2.5 rounded-full transition-all duration-500"></div>
+                </div>
+            </div>
+
+            <div id="cart-items-container" class="space-y-4"></div>
+        </div>
+
+        <div class="w-full lg:w-96">
+            <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 sticky top-24">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Resumen del pedido</h2>
+                <div class="space-y-4 text-gray-600">
+                    <div class="flex justify-between">
+                        <span>Subtotal</span>
+                        <span id="summary-subtotal" class="font-bold text-gray-900">$0.00</span>
+                    </div>
+                    <div class="flex justify-between font-medium">
+                        <span>Envío Total</span>
+                        <span id="summary-shipping" class="text-blue-600">$0.00</span>
+                    </div>
+                    <hr class="border-gray-100">
+                    <div class="flex justify-between text-xl font-black text-slate-900">
+                        <span>Total Final</span>
+                        <span id="summary-total" class="text-green-600">$0.00</span>
+                    </div>
+                </div>
+                <button onclick="goToCheckout()" class="w-full mt-8 bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-black py-4 rounded-xl shadow-lg transition-all transform active:scale-95">
+                    Proceder al pago seguros
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. Configuración de constantes desde Go
+    const TASA_SERVIDOR = parseFloat("{{.Tasa}}") || 1.0;
+    const PAIS = "{{.PaisActual}}";
+    const FREE_SHIPPING_LIMIT_USD = 100.00;
+
+    // 2. Definición del objeto Cart (Cerebro del carrito)
+    // Lo definimos aquí mismo para evitar el error de "ReferenceError"
+    const Cart = {
+        get: () => JSON.parse(localStorage.getItem('cart') || '[]'),
+        save: (items) => {
+            localStorage.setItem('cart', JSON.stringify(items));
+            // Si tienes una función para actualizar el badge en el header, llámala aquí con try/catch
+            try { if(typeof updateCartBadge === 'function') updateCartBadge(); } catch(e) {}
+        }
+    };
+
+    // 3. Función para limpiar y convertir precios
+    function cleanPrice(priceText) {
+        if (!priceText) return 0;
+        let cleaned = priceText.replace(/[^\d,.]/g, '').replace(',', '.');
+        return parseFloat(cleaned) || 0;
+    }
+
+    // 4. Renderizado de la lista de productos
+// 4. Renderizado de la lista de productos con Color, Tamaño y URL
+    function renderCart() {
+        const container = document.getElementById('cart-items-container');
+        const items = Cart.get();
+        let subtotalUSD = 0;
+        let acumuladoEnvioUSD = 0;
+        let html = "";
+
+        if (items.length === 0) {
+            container.innerHTML = `<div class="p-12 text-center bg-white rounded-2xl border border-dashed text-gray-400">Tu carrito está vacío</div>`;
+            updateUIValues(0, 0);
+            return;
+        }
+
+items.forEach((item, index) => {
+            // Limpieza de precios
+            let pUnitario = cleanPrice(item.price);
+            if (!item.price.toUpperCase().includes("USD") && TASA_SERVIDOR > 1) {
+                pUnitario = pUnitario / TASA_SERVIDOR;
+            }
+            
+            const itemQty = parseInt(item.qty) || 1;
+            const subtotalItem = pUnitario * itemQty;
+            subtotalUSD += subtotalItem;
+
+            // Cálculo de envío
+            let envioUSD = 0;
+            if (item.logistica) {
+                let match = item.logistica.match(/(\d+[\.,]\d{2})/);
+                if (match) {
+                    envioUSD = parseFloat(match[1].replace(',', '.')) || 0;
+                    if (!item.logistica.toUpperCase().includes("USD") && TASA_SERVIDOR > 1) {
+                        envioUSD = envioUSD / TASA_SERVIDOR;
+                    }
+                }
+            }
+            acumuladoEnvioUSD += (envioUSD * itemQty);
+
+            // RENDERIZADO DEL HTML
+            // Nota: Usamos item.url para que el cliente pueda volver a ver el producto
+            html += `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-wrap md:flex-nowrap gap-4 items-center">
+                    <a href="/producto?id=${item.id}&lang={{.Idioma}}&country=${PAIS}" class="shrink-0">
+                        <img src="${item.img}" class="w-20 h-20 object-contain rounded-lg bg-gray-50 border hover:opacity-80 transition-opacity">
+                    </a>
+
+                    <div class="flex-1 min-w-[200px]">
+                        <a href="/producto?id=${item.id}&lang={{.Idioma}}&country=${PAIS}" class="hover:text-blue-600 transition-colors">
+                            <h3 class="font-bold text-gray-800 text-sm line-clamp-1">${item.title}</h3>
+                        </a>
+                        
+                        <div class="flex gap-2 mt-1">
+                            ${item.color && item.color !== 'N/A' ? 
+                                `<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full border border-gray-200">
+                                    <b>Color:</b> ${item.color}
+                                 </span>` : ''}
+                            ${item.size && item.size !== 'N/A' ? 
+                                `<span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full border border-gray-200">
+                                    <b>Talla:</b> ${item.size}
+                                 </span>` : ''}
+                        </div>
+
+                        <p class="text-blue-600 font-black mt-2">$ ${pUnitario.toFixed(2)} USD</p>
+                    </div>
+                    
+                    <div class="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <button onclick="updateCartQty(${index}, -1)" class="w-8 h-8 hover:bg-gray-200 transition-colors">-</button>
+                        <span class="w-10 text-center font-bold text-sm text-slate-700">${itemQty}</span>
+                        <button onclick="updateCartQty(${index}, 1)" class="w-8 h-8 hover:bg-gray-200 transition-colors">+</button>
+                    </div>
+
+                    <div class="text-right min-w-[100px]">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Subtotal</p>
+                        <p class="font-bold text-slate-900">$${subtotalItem.toFixed(2)}</p>
+                    </div>
+
+                    <button onclick="removeItem(${index})" class="text-gray-300 hover:text-red-500 transition-colors p-2">
+                        <i class="fa fa-trash-can"></i>
+                    </button>
+                </div>`;
+        });
+        
+        container.innerHTML = html;
+        updateUIValues(subtotalUSD, acumuladoEnvioUSD);
+    }
+
+    // 5. Actualizar cantidades
+    window.updateCartQty = function(index, delta) {
+        let items = Cart.get();
+        if(!items[index]) return;
+        
+        items[index].qty = (parseInt(items[index].qty) || 1) + delta;
+        
+        if (items[index].qty < 1) {
+            return removeItem(index);
+        }
+        
+        Cart.save(items);
+        renderCart();
+    };
+
+    // 6. Eliminar producto
+    window.removeItem = function(index) {
+        let items = Cart.get();
+        items.splice(index, 1);
+        Cart.save(items);
+        renderCart();
+    };
+
+    // 7. Actualizar totales y barra de envío gratis
+    function updateUIValues(subtotal, envio) {
+        const thresholdDiv = document.getElementById('free-shipping-threshold');
+        const bar = document.getElementById('threshold-bar');
+        const msg = document.getElementById('threshold-message');
+        
+        if (subtotal === 0) {
+            thresholdDiv.classList.add('hidden');
+        } else {
+            thresholdDiv.classList.remove('hidden');
+            let perc = (subtotal / FREE_SHIPPING_LIMIT_USD) * 100;
+            bar.style.width = Math.min(perc, 100) + "%";
+
+            if (subtotal >= FREE_SHIPPING_LIMIT_USD) {
+                envio = 0;
+                msg.innerHTML = "¡Felicidades! Tienes <span class='text-green-600 font-black'>Envío Gratis</span> 🎉";
+                bar.classList.replace('bg-green-500', 'bg-emerald-400');
+            } else {
+                let faltante = FREE_SHIPPING_LIMIT_USD - subtotal;
+                msg.innerHTML = `Te faltan <span class='font-black'>$${faltante.toFixed(2)} USD</span> para envío gratis`;
+            }
+        }
+
+        document.getElementById('summary-subtotal').innerText = "$" + subtotal.toFixed(2);
+        
+        const shipElem = document.getElementById('summary-shipping');
+        if (envio === 0 && subtotal > 0) {
+            shipElem.innerText = "¡GRATIS!";
+            shipElem.className = "text-green-600 font-black";
+        } else {
+            shipElem.innerText = "$" + envio.toFixed(2);
+            shipElem.className = "text-blue-600 font-medium";
+        }
+        
+        document.getElementById('summary-total').innerText = "$" + (subtotal + envio).toFixed(2);
+    }
+
+    // 8. IR AL CHECKOUT (Solución al ReferenceError)
+    window.goToCheckout = function() {
+        const items = Cart.get();
+        if (items.length === 0) {
+            alert("Tu carrito está vacío");
+            return;
+        }
+        // Redirigir pasando el país para que el checkout sepa qué moneda usar
+        window.location.href = "/checkout?country=" + PAIS + "&lang={{.Idioma}}";
+    };
+
+    // 9. Inicialización al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+        renderCart();
+    });
+</script>
+{{end}}
