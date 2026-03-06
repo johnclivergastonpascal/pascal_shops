@@ -249,7 +249,7 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 }
 
 func cargarDatos() {
-	file, err := os.ReadFile("../data/productos.json")
+	file, err := os.ReadFile("data/productos.json")
 	if err != nil {
 		log.Println("Error: No se encontró productos.json")
 		return
@@ -302,8 +302,8 @@ func renderTemplate(w http.ResponseWriter, tmplName string, data PageData) {
 		"sub": func(a, b int) int { return a - b },
 	}
 	tmpl, err := template.New("layout").Funcs(funcMap).ParseFiles(
-		"../static/layout.html",
-		"../static/"+tmplName,
+		"static/layout.html",
+		"static/"+tmplName,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
