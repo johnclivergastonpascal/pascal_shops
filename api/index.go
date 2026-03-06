@@ -32,7 +32,7 @@ var (
 	tasasCambio         = map[string]float64{"USD": 1.0, "MXN": 17.50, "COP": 3950.0, "GTQ": 7.80, "PEN": 3.75}
 	monedas             = map[string]string{"MX": "MXN", "GT": "GTQ", "PE": "PEN", "CO": "COP", "US": "USD"}
 	simbolos            = map[string]string{"MX": "$", "GT": "Q", "PE": "S/", "CO": "$", "US": "$"}
-	
+
 	// Cliente de MongoDB global
 	mgClient *mongo.Client
 )
@@ -154,9 +154,13 @@ func slugify(s string) string {
 
 func getLocalCurrency(pais string) (string, string, float64) {
 	mon := monedas[pais]
-	if mon == "" { mon = "USD" }
+	if mon == "" {
+		mon = "USD"
+	}
 	simb := simbolos[pais]
-	if simb == "" { simb = "$" }
+	if simb == "" {
+		simb = "$"
+	}
 	return mon, simb, tasasCambio[mon]
 }
 
@@ -179,7 +183,9 @@ func procesarVista(p Producto, lang, pais string) Producto {
 	mon, simb, tasa := getLocalCurrency(pais)
 	rawVal := regexp.MustCompile(`[0-9.]+`).FindString(p.Precios[0].Valor)
 	valUnitarioUSD, _ := strconv.ParseFloat(rawVal, 64)
-	if valUnitarioUSD == 0 { valUnitarioUSD = 10.0 }
+	if valUnitarioUSD == 0 {
+		valUnitarioUSD = 10.0
+	}
 
 	cantidadMOQ := 1.0
 	reMOQ := regexp.MustCompile(`(?i)Minimum\s+order\s+quantity:\s*(\d+)`)
@@ -202,7 +208,9 @@ func procesarVista(p Producto, lang, pais string) Producto {
 }
 
 func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) string {
-	if bloque == "" { return "" }
+	if bloque == "" {
+		return ""
+	}
 	bloqueLower := strings.ToLower(bloque)
 	valorPivoteUSD := 17.30
 	var costoFinalUSD float64
@@ -241,7 +249,7 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 }
 
 func cargarDatos() {
-	file, err := os.ReadFile("./data/productos.json")
+	file, err := os.ReadFile("../data/productos.json")
 	if err != nil {
 		log.Println("Error: No se encontró productos.json")
 		return
@@ -259,7 +267,9 @@ func cargarDatos() {
 				pMod := p
 				if lang == "es" {
 					t, _ := gtranslate.TranslateWithParams(p.Titulo, gtranslate.TranslationParams{From: "en", To: "es"})
-					if t != "" { pMod.Titulo = t }
+					if t != "" {
+						pMod.Titulo = t
+					}
 				}
 				lista = append(lista, procesarVista(pMod, lang, pais))
 			}
@@ -271,7 +281,9 @@ func cargarDatos() {
 func enviarEmailConfirmacion(to string, orderID string) {
 	from := os.Getenv("EMAIL_USER")
 	pass := os.Getenv("EMAIL_PASS")
-	if from == "" || pass == "" { return }
+	if from == "" || pass == "" {
+		return
+	}
 
 	msg := "Subject: Confirmación de Pedido " + orderID + "\n" +
 		"Muchas gracias por su compra.\n" +
@@ -290,8 +302,8 @@ func renderTemplate(w http.ResponseWriter, tmplName string, data PageData) {
 		"sub": func(a, b int) int { return a - b },
 	}
 	tmpl, err := template.New("layout").Funcs(funcMap).ParseFiles(
-		"./static/layout.html",
-		"./static/"+tmplName,
+		"../static/layout.html",
+		"../static/"+tmplName,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -305,7 +317,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	cat := r.URL.Query().Get("cat")
 	q := strings.ToLower(r.URL.Query().Get("q"))
 	todosLosProductos := cacheTraducida[lang][country]
-	
+
 	mapCat := make(map[string]bool)
 	var listaCategorias []string
 	for _, p := range todosLosProductos {
@@ -325,11 +337,17 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("p"))
-	if page < 1 { page = 1 }
+	if page < 1 {
+		page = 1
+	}
 	start := (page - 1) * PageSize
-	if start > len(filtrados) { start = 0 }
+	if start > len(filtrados) {
+		start = 0
+	}
 	end := start + PageSize
-	if end > len(filtrados) { end = len(filtrados) }
+	if end > len(filtrados) {
+		end = len(filtrados)
+	}
 
 	renderTemplate(w, "index.html", PageData{
 		Categorias:  listaCategorias,
@@ -392,14 +410,14 @@ func apiCheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		"id_transaccion_paypal": p.IDPaypal,
 		"fecha":                 time.Now().Format("2006-01-02 15:04:05"),
 		"pais":                  p.Pais,
-		"moneda":                 mon,
-		"cliente":                p.Nombre,
-		"email":                  p.Email,
-		"telefono":               p.Telefono,
-		"direccion":              p.Direccion,
+		"moneda":                mon,
+		"cliente":               p.Nombre,
+		"email":                 p.Email,
+		"telefono":              p.Telefono,
+		"direccion":             p.Direccion,
 		"resumen": map[string]interface{}{
 			"total_final_usd": p.TotalPagado,
-			"tasa_aplicada":  tasa,
+			"tasa_aplicada":   tasa,
 		},
 		"productos": p.Items,
 	}
@@ -419,15 +437,19 @@ func apiCheckoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "id_pedido": orderID})
-	
+
 	go enviarEmailConfirmacion(p.Email, orderID)
 }
 
 func getParams(r *http.Request) (string, string) {
 	lang := r.URL.Query().Get("lang")
 	country := r.URL.Query().Get("country")
-	if lang == "" { lang = DefaultLang }
-	if country == "" { country = DefaultCountry }
+	if lang == "" {
+		lang = DefaultLang
+	}
+	if country == "" {
+		country = DefaultCountry
+	}
 	return lang, country
 }
 
