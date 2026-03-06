@@ -1,0 +1,132 @@
+{{define "content"}}
+<div class="flex flex-col md:flex-row gap-8">
+    <aside class="w-full md:w-64 flex-shrink-0">
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 sticky top-24">
+            <h2 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
+                <i class="fa fa-list-ul text-blue-600"></i> Categorías
+            </h2>
+            <nav class="space-y-1">
+                <a href="/?lang={{.Idioma}}&country={{.PaisActual}}"
+                    class="block px-3 py-2 rounded-lg transition {{if eq .CurrentCat ""}}bg-blue-50 text-blue-700 font-bold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+                    Todas las categorías
+                </a>
+
+                {{range .Categorias}}
+                <a href="/?cat={{.}}&lang={{$.Idioma}}&country={{$.PaisActual}}"
+                    class="block px-3 py-2 rounded-lg transition {{if eq $.CurrentCat .}}bg-blue-50 text-blue-700 font-bold{{else}}text-gray-600 hover:bg-gray-50{{end}}">
+                    {{.}}
+                </a>
+                {{end}}
+            </nav>
+
+            <div class="mt-8 pt-6 border-t border-gray-100">
+                <h3 class="font-bold text-gray-800 mb-3 text-sm uppercase">País de Entrega</h3>
+                <div
+                    class="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    <i class="fa fa-globe text-blue-500"></i>
+                    <span>Enviando a <strong class="text-blue-700">{{.PaisActual}}</strong></span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <section class="flex-1">
+        <div class="mb-6 flex justify-between items-center">
+            <h1 class="text-xl text-gray-700">
+                {{if .SearchQuery}}
+                Resultados para: <span class="font-bold text-gray-900">"{{.SearchQuery}}"</span>
+                {{else if .CurrentCat}}
+                Categoría: <span class="font-bold text-gray-900">{{.CurrentCat}}</span>
+                {{else}}
+                Todos los productos
+                {{end}}
+            </h1>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {{range .Productos}}
+            <article
+                class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col">
+                <div class="relative aspect-square overflow-hidden bg-gray-50">
+                    <a href="/producto?id={{.ID}}&lang={{$.Idioma}}&country={{$.PaisActual}}">
+                        <img src="{{.MainImage}}" alt="{{.Titulo}}"
+                            class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500 p-4">
+                    </a>
+                </div>
+
+                <div class="p-4 flex flex-col flex-grow">
+                    <div class="text-xs text-blue-600 font-semibold uppercase tracking-wider mb-1">
+                        {{.Categoria}}
+                    </div>
+
+                    <a href="/producto?id={{.ID}}&lang={{$.Idioma}}&country={{$.PaisActual}}" class="block mb-2">
+                        <h3 class="text-sm font-bold text-gray-800 line-clamp-2 hover:text-blue-600 transition h-10">
+                            {{.Titulo}}
+                        </h3>
+                    </a>
+
+                    <div class="mt-auto">
+                        <div class="flex items-baseline gap-1">
+                            <span class="text-2xl font-black text-slate-900">{{.MainPrice}}</span>
+                        </div>
+
+                        <div
+                            class="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded w-fit border border-green-100">
+                            <i class="fa fa-truck-fast"></i>
+                            {{.LogisticaInfo}}
+                        </div>
+
+                        <a href="/producto?id={{.ID}}&lang={{$.Idioma}}&country={{$.PaisActual}}"
+                            class="w-full mt-4 bg-gray-100 hover:bg-slate-900 hover:text-white text-slate-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 group/btn active:scale-95">
+                            <span>Ver opciones</span>
+                            <i class="fa fa-arrow-right text-xs group-hover/btn:translate-x-1 transition-transform"></i>
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {{else}}
+            <div class="col-span-full py-20 text-center bg-white rounded-2xl border-2 border-dashed border-gray-200">
+                <div
+                    class="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
+                    <i class="fa fa-search text-3xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800">No hay productos disponibles</h3>
+                <p class="text-gray-500">Intenta cambiar los filtros o el término de búsqueda.</p>
+                <a href="/?lang={{.Idioma}}&country={{.PaisActual}}"
+                    class="mt-4 inline-block text-blue-600 font-bold hover:underline">
+                    Ver todo el catálogo
+                </a>
+            </div>
+            {{end}}
+        </div>
+
+        {{if gt .TotalPages 1}}
+        <div class="flex justify-center items-center mt-12 gap-1">
+            {{if gt .CurrentPage 1}}
+            <a href="/?p={{sub .CurrentPage 1}}&cat={{.CurrentCat}}&q={{.SearchQuery}}&lang={{.Idioma}}&country={{.PaisActual}}"
+                class="p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition shadow-sm">
+                <i class="fa fa-chevron-left"></i>
+            </a>
+            {{end}}
+
+            <div class="flex gap-1 mx-4">
+                <span class="px-5 py-2 bg-slate-900 text-white rounded-lg font-bold shadow-lg shadow-slate-200">
+                    {{.CurrentPage}}
+                </span>
+                <span class="px-5 py-2 text-gray-400">de</span>
+                <span class="px-5 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg font-bold">
+                    {{.TotalPages}}
+                </span>
+            </div>
+
+            {{if lt .CurrentPage .TotalPages}}
+            <a href="/?p={{add .CurrentPage 1}}&cat={{.CurrentCat}}&q={{.SearchQuery}}&lang={{.Idioma}}&country={{.PaisActual}}"
+                class="p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition shadow-sm">
+                <i class="fa fa-chevron-right"></i>
+            </a>
+            {{end}}
+        </div>
+        {{end}}
+    </section>
+</div>
+{{end}}
