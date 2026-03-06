@@ -1,17 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.go",
-      "use": "@vercel/go",
-      "config": {
-        "includeFiles": [
-          "static/**",
-          "data/**"
-        ]
-      }
-    }
-  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
   ]
