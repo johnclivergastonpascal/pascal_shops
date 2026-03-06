@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -250,16 +250,18 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 }
 
 func cargarDatos() {
-	basePath, _ := os.Getwd()
-	productosPath := filepath.Join(basePath, "data", "productos.json")
+	// basePath, _ := os.Getwd()
+	// productosPath := filepath.Join(basePath, "data", "productos.json")
+	var dataFiles embed.FS
 
-	file, err := os.ReadFile(productosPath)
+	// Leemos el archivo directamente desde el sistema embebido
+	file, err := dataFiles.ReadFile("data/productos.json")
 	if err != nil {
-		log.Printf("Error leyendo JSON en %s: %v", productosPath, err)
+		log.Println("Error: No se pudo leer el JSON embebido:", err)
 		return
 	}
-	json.Unmarshal(file, &productosOriginales)
 
+	json.Unmarshal(file, &productosOriginales)
 	paises := []string{"US", "MX", "CO", "GT", "PE"}
 	idiomas := []string{"en", "es"}
 
@@ -300,29 +302,23 @@ func enviarEmailConfirmacion(to string, orderID string) {
 
 // --- HANDLERS ---
 
+var staticFiles embed.FS
+
 func renderTemplate(w http.ResponseWriter, tmplName string, data PageData) {
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
 		"sub": func(a, b int) int { return a - b },
 	}
 
-	// 1. Obtenemos la ruta del directorio de trabajo actual
-	wd, err := os.Getwd()
-	if err != nil {
-		http.Error(w, "Error obteniendo ruta: "+err.Error(), 500)
-		return
-	}
-
-	// 2. Construimos la ruta absoluta uniendo la raíz con la carpeta static
-	layoutPath := filepath.Join(wd, "static", "layout.html")
-	templatePath := filepath.Join(wd, "static", tmplName)
-
-	// Importante: Necesitas importar "path/filepath" en tus imports arriba
-	tmpl, err := template.New("layout").Funcs(funcMap).ParseFiles(layoutPath, templatePath)
+	// Usamos ParseFS en lugar de ParseFiles
+	tmpl, err := template.New("layout").Funcs(funcMap).ParseFS(
+		staticFiles,
+		"static/layout.html",
+		"static/"+tmplName,
+	)
 
 	if err != nil {
-		// Esto te dirá exactamente QUÉ ruta falló en los logs de Vercel
-		http.Error(w, fmt.Sprintf("Error cargando plantilla (%s): %v", templatePath, err), 500)
+		http.Error(w, fmt.Sprintf("Error cargando plantillas embebidas: %v", err), 500)
 		return
 	}
 
