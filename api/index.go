@@ -20,6 +20,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// --- CONFIGURACIÓN DE EMBED ---
+// Estos comandos meten los archivos dentro del binario de Go.
+// Las carpetas 'static' y 'data' deben estar dentro de la carpeta 'api'.
+
+//go:embed static/*.html
+var staticFiles embed.FS
+
+//go:embed data/productos.json
+var dataFiles embed.FS
+
 // --- CONFIGURACIÓN GLOBAL ---
 const (
 	DefaultLang    = "es"
@@ -182,18 +192,23 @@ func formatearMiles(n float64) string {
 
 func procesarVista(p Producto, lang, pais string) Producto {
 	mon, simb, tasa := getLocalCurrency(pais)
-	rawVal := regexp.MustCompile(`[0-9.]+`).FindString(p.Precios[0].Valor)
-	valUnitarioUSD, _ := strconv.ParseFloat(rawVal, 64)
-	if valUnitarioUSD == 0 {
-		valUnitarioUSD = 10.0
+
+	valUnitarioUSD := 10.0
+	if len(p.Precios) > 0 {
+		rawVal := regexp.MustCompile(`[0-9.]+`).FindString(p.Precios[0].Valor)
+		if v, err := strconv.ParseFloat(rawVal, 64); err == nil && v > 0 {
+			valUnitarioUSD = v
+		}
 	}
 
 	cantidadMOQ := 1.0
-	reMOQ := regexp.MustCompile(`(?i)Minimum\s+order\s+quantity:\s*(\d+)`)
-	match := reMOQ.FindStringSubmatch(p.Precios[0].Cantidad)
-	if len(match) > 1 {
-		if val, err := strconv.ParseFloat(match[1], 64); err == nil {
-			cantidadMOQ = val
+	if len(p.Precios) > 0 {
+		reMOQ := regexp.MustCompile(`(?i)Minimum\s+order\s+quantity:\s*(\d+)`)
+		match := reMOQ.FindStringSubmatch(p.Precios[0].Cantidad)
+		if len(match) > 1 {
+			if val, err := strconv.ParseFloat(match[1], 64); err == nil {
+				cantidadMOQ = val
+			}
 		}
 	}
 
@@ -250,18 +265,18 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 }
 
 func cargarDatos() {
-	// basePath, _ := os.Getwd()
-	// productosPath := filepath.Join(basePath, "data", "productos.json")
-	var dataFiles embed.FS
-
-	// Leemos el archivo directamente desde el sistema embebido
+	// Leemos el archivo directamente desde la variable embebida dataFiles
 	file, err := dataFiles.ReadFile("data/productos.json")
 	if err != nil {
 		log.Println("Error: No se pudo leer el JSON embebido:", err)
 		return
 	}
 
-	json.Unmarshal(file, &productosOriginales)
+	if err := json.Unmarshal(file, &productosOriginales); err != nil {
+		log.Println("Error: Fallo al parsear JSON:", err)
+		return
+	}
+
 	paises := []string{"US", "MX", "CO", "GT", "PE"}
 	idiomas := []string{"en", "es"}
 
@@ -302,15 +317,13 @@ func enviarEmailConfirmacion(to string, orderID string) {
 
 // --- HANDLERS ---
 
-var staticFiles embed.FS
-
 func renderTemplate(w http.ResponseWriter, tmplName string, data PageData) {
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
 		"sub": func(a, b int) int { return a - b },
 	}
 
-	// Usamos ParseFS en lugar de ParseFiles
+	// Usamos ParseFS con la variable staticFiles declarada arriba
 	tmpl, err := template.New("layout").Funcs(funcMap).ParseFS(
 		staticFiles,
 		"static/layout.html",
@@ -362,16 +375,23 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		end = len(filtrados)
 	}
 
-	renderTemplate(w, "index.html", PageData{
+	data := PageData{
 		Categorias:  listaCategorias,
-		Productos:   filtrados[start:end],
 		CurrentCat:  cat,
 		CurrentPage: page,
 		TotalPages:  (len(filtrados) + PageSize - 1) / PageSize,
 		PaisActual:  country,
 		Idioma:      lang,
 		SearchQuery: q,
-	})
+	}
+
+	if len(filtrados) > 0 {
+		data.Productos = filtrados[start:end]
+	} else {
+		data.Productos = []Producto{}
+	}
+
+	renderTemplate(w, "index.html", data)
 }
 
 func productHandler(w http.ResponseWriter, r *http.Request) {
@@ -435,7 +455,6 @@ func apiCheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		"productos": p.Items,
 	}
 
-	// GUARDAR EN MONGODB (Solo si mgClient está conectado)
 	if mgClient != nil {
 		collection := mgClient.Database("tienda_db").Collection("pedidos")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -472,7 +491,7 @@ func successHandler(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, "success.html", PageData{
 		PaisActual: country,
 		Idioma:     lang,
-		CurrentCat: orderID,
+		CurrentCat: orderID, // Se usa este campo para pasar el ID del pedido
 	})
 }
 
