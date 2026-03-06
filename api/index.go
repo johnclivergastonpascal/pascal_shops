@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,11 +15,12 @@ import (
 	"time"
 
 	"github.com/bregydoc/gtranslate"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // --- CONFIGURACIÓN GLOBAL ---
 const (
-	Port           = ":8080"
 	DefaultLang    = "es"
 	DefaultCountry = "US"
 	PageSize       = 20
@@ -30,6 +32,9 @@ var (
 	tasasCambio         = map[string]float64{"USD": 1.0, "MXN": 17.50, "COP": 3950.0, "GTQ": 7.80, "PEN": 3.75}
 	monedas             = map[string]string{"MX": "MXN", "GT": "GTQ", "PE": "PEN", "CO": "COP", "US": "USD"}
 	simbolos            = map[string]string{"MX": "$", "GT": "Q", "PE": "S/", "CO": "$", "US": "$"}
+	
+	// Cliente de MongoDB global
+	mgClient *mongo.Client
 )
 
 // --- MODELOS ---
@@ -86,7 +91,7 @@ type CheckoutPayload struct {
 	Items       []struct {
 		Titulo   string `json:"titulo"`
 		Cantidad int    `json:"cantidad"`
-		URL      string `json:"url"` // <--- Agregado para rastrear el producto
+		URL      string `json:"url"`
 	} `json:"items"`
 }
 
@@ -149,13 +154,9 @@ func slugify(s string) string {
 
 func getLocalCurrency(pais string) (string, string, float64) {
 	mon := monedas[pais]
-	if mon == "" {
-		mon = "USD"
-	}
+	if mon == "" { mon = "USD" }
 	simb := simbolos[pais]
-	if simb == "" {
-		simb = "$"
-	}
+	if simb == "" { simb = "$" }
 	return mon, simb, tasasCambio[mon]
 }
 
@@ -176,15 +177,10 @@ func formatearMiles(n float64) string {
 
 func procesarVista(p Producto, lang, pais string) Producto {
 	mon, simb, tasa := getLocalCurrency(pais)
-
-	// 1. Extraer precio unitario base
 	rawVal := regexp.MustCompile(`[0-9.]+`).FindString(p.Precios[0].Valor)
 	valUnitarioUSD, _ := strconv.ParseFloat(rawVal, 64)
-	if valUnitarioUSD == 0 {
-		valUnitarioUSD = 10.0
-	}
+	if valUnitarioUSD == 0 { valUnitarioUSD = 10.0 }
 
-	// 2. Lógica MOQ y Fórmula (Cantidad * Valor + 4.50 USD)
 	cantidadMOQ := 1.0
 	reMOQ := regexp.MustCompile(`(?i)Minimum\s+order\s+quantity:\s*(\d+)`)
 	match := reMOQ.FindStringSubmatch(p.Precios[0].Cantidad)
@@ -194,10 +190,7 @@ func procesarVista(p Producto, lang, pais string) Producto {
 		}
 	}
 
-	// Aplicamos la fórmula: (MOQ * PrecioUnitario) + 4.50 USD fijos
 	totalUSD := (cantidadMOQ * valUnitarioUSD) + 4.50
-
-	// 3. Convertir a moneda local y asignar
 	p.MainPrice = formatCurrency(totalUSD*tasa, mon, simb)
 	p.ID = slugify(p.Titulo)
 	p.LogisticaInfo = traducirLogistica(p.BloqueLogistico, lang, tasa, mon, simb)
@@ -209,17 +202,9 @@ func procesarVista(p Producto, lang, pais string) Producto {
 }
 
 func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) string {
-	if bloque == "" {
-		return ""
-	}
-
+	if bloque == "" { return "" }
 	bloqueLower := strings.ToLower(bloque)
 	valorPivoteUSD := 17.30
-	const (
-		factorStandard = 0.83
-		factorEconomy  = 0.60
-	)
-
 	var costoFinalUSD float64
 	var tipoEnvio string
 	var diasEntrega int
@@ -229,18 +214,17 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 		tipoEnvio = "Premium"
 		diasEntrega = 7
 	} else if strings.Contains(bloqueLower, "standard") || strings.Contains(bloqueLower, "estándar") {
-		costoFinalUSD = valorPivoteUSD * factorStandard
+		costoFinalUSD = valorPivoteUSD * 0.83
 		tipoEnvio = "Estándar"
 		diasEntrega = 15
 	} else {
-		costoFinalUSD = valorPivoteUSD * factorEconomy
+		costoFinalUSD = valorPivoteUSD * 0.60
 		tipoEnvio = "Económico"
 		diasEntrega = 30
 	}
 
 	textoPrecio := formatCurrency(costoFinalUSD*tasa, mon, simb)
 	fechaEstimada := time.Now().AddDate(0, 0, diasEntrega)
-
 	meses := map[string]string{
 		"Jan": "Ene", "Feb": "Feb", "Mar": "Mar", "Apr": "Abr", "May": "May", "Jun": "Jun",
 		"Jul": "Jul", "Aug": "Ago", "Sep": "Sep", "Oct": "Oct", "Nov": "Nov", "Dec": "Dic",
@@ -251,22 +235,16 @@ func traducirLogistica(bloque, lang string, tasa float64, mon, simb string) stri
 		for en, es := range meses {
 			fechaFmt = strings.Replace(fechaFmt, en, es, 1)
 		}
-	}
-
-	if lang == "es" {
 		return fmt.Sprintf("Envío %s: %s (Llega el %s)", tipoEnvio, textoPrecio, fechaFmt)
 	}
-	tipoEng := map[string]string{"Premium": "Premium", "Estándar": "Standard", "Económico": "Economy"}[tipoEnvio]
-	return fmt.Sprintf("%s Shipping: %s (Arrives %s)", tipoEng, textoPrecio, fechaFmt)
+	return fmt.Sprintf("%s Shipping: %s (Arrives %s)", tipoEnvio, textoPrecio, fechaFmt)
 }
 
-// --- CARGA DE DATOS ---
-
 func cargarDatos() {
-	log.Println("Iniciando carga de catálogo...")
 	file, err := os.ReadFile("./data/productos.json")
 	if err != nil {
-		log.Fatal("No se encontró productos.json:", err)
+		log.Println("Error: No se encontró productos.json")
+		return
 	}
 	json.Unmarshal(file, &productosOriginales)
 
@@ -281,34 +259,27 @@ func cargarDatos() {
 				pMod := p
 				if lang == "es" {
 					t, _ := gtranslate.TranslateWithParams(p.Titulo, gtranslate.TranslationParams{From: "en", To: "es"})
-					if t != "" {
-						pMod.Titulo = t
-					}
+					if t != "" { pMod.Titulo = t }
 				}
 				lista = append(lista, procesarVista(pMod, lang, pais))
 			}
 			cacheTraducida[lang][pais] = lista
 		}
 	}
-	log.Println("Catálogo listo.")
 }
 
 func enviarEmailConfirmacion(to string, orderID string) {
-	// ESTO ES UN EJEMPLO - Requiere credenciales reales
-	from := "tu-email@gmail.com"
-	pass := "tu-contraseña-de-aplicacion"
+	from := os.Getenv("EMAIL_USER")
+	pass := os.Getenv("EMAIL_PASS")
+	if from == "" || pass == "" { return }
 
 	msg := "Subject: Confirmación de Pedido " + orderID + "\n" +
 		"Muchas gracias por su compra.\n" +
 		"Su pedido llegará en aproximadamente 15 días."
 
-	err := smtp.SendMail("smtp.gmail.com:587",
+	smtp.SendMail("smtp.gmail.com:587",
 		smtp.PlainAuth("", from, pass, "smtp.gmail.com"),
 		from, []string{to}, []byte(msg))
-
-	if err != nil {
-		log.Printf("Error enviando email: %s", err)
-	}
 }
 
 // --- HANDLERS ---
@@ -326,7 +297,6 @@ func renderTemplate(w http.ResponseWriter, tmplName string, data PageData) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	tmpl.ExecuteTemplate(w, "layout", data)
 }
 
@@ -335,6 +305,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	cat := r.URL.Query().Get("cat")
 	q := strings.ToLower(r.URL.Query().Get("q"))
 	todosLosProductos := cacheTraducida[lang][country]
+	
 	mapCat := make(map[string]bool)
 	var listaCategorias []string
 	for _, p := range todosLosProductos {
@@ -343,6 +314,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 			listaCategorias = append(listaCategorias, p.Categoria)
 		}
 	}
+
 	var filtrados []Producto
 	for _, p := range todosLosProductos {
 		matchCat := (cat == "" || p.Categoria == cat)
@@ -351,18 +323,13 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 			filtrados = append(filtrados, p)
 		}
 	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("p"))
-	if page < 1 {
-		page = 1
-	}
+	if page < 1 { page = 1 }
 	start := (page - 1) * PageSize
-	if start > len(filtrados) {
-		start = 0
-	}
+	if start > len(filtrados) { start = 0 }
 	end := start + PageSize
-	if end > len(filtrados) {
-		end = len(filtrados)
-	}
+	if end > len(filtrados) { end = len(filtrados) }
 
 	renderTemplate(w, "index.html", PageData{
 		Categorias:  listaCategorias,
@@ -395,7 +362,7 @@ func shoppingHandler(w http.ResponseWriter, r *http.Request) {
 		PaisActual:   country,
 		Idioma:       lang,
 		Tasa:         tasa,
-		Traducciones: traducciones[lang], // <--- Esto envía las palabras correctas
+		Traducciones: traducciones[lang],
 	})
 }
 
@@ -416,49 +383,57 @@ func apiCheckoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	orderID := fmt.Sprintf("ORD-%d", time.Now().Unix())
 	mon, _, tasa := getLocalCurrency(p.Pais)
+
 	pedidoCompleto := map[string]interface{}{
 		"id_pedido":             orderID,
 		"id_transaccion_paypal": p.IDPaypal,
 		"fecha":                 time.Now().Format("2006-01-02 15:04:05"),
 		"pais":                  p.Pais,
-		"moneda":                mon,
-		"cliente":               p.Nombre,
-		"email":                 p.Email,
+		"moneda":                 mon,
+		"cliente":                p.Nombre,
+		"email":                  p.Email,
+		"telefono":               p.Telefono,
+		"direccion":              p.Direccion,
 		"resumen": map[string]interface{}{
 			"total_final_usd": p.TotalPagado,
-			"tasa_aplicada":   tasa,
+			"tasa_aplicada":  tasa,
 		},
 		"productos": p.Items,
 	}
-	f, _ := os.OpenFile("pedidos.jsonl", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	defer f.Close()
-	logData, _ := json.Marshal(pedidoCompleto)
-	f.Write(append(logData, '\n'))
+
+	// GUARDAR EN MONGODB (Solo si mgClient está conectado)
+	if mgClient != nil {
+		collection := mgClient.Database("tienda_db").Collection("pedidos")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := collection.InsertOne(ctx, pedidoCompleto)
+		if err != nil {
+			log.Printf("Error insertando en Mongo: %v", err)
+		}
+	} else {
+		log.Println("Error: MongoDB no está conectado")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "id_pedido": orderID})
-	enviarEmailConfirmacion(p.Email, orderID)
+	
+	go enviarEmailConfirmacion(p.Email, orderID)
 }
 
 func getParams(r *http.Request) (string, string) {
 	lang := r.URL.Query().Get("lang")
 	country := r.URL.Query().Get("country")
-	if lang == "" {
-		lang = DefaultLang
-	}
-	if country == "" {
-		country = DefaultCountry
-	}
+	if lang == "" { lang = DefaultLang }
+	if country == "" { country = DefaultCountry }
 	return lang, country
 }
 
 func successHandler(w http.ResponseWriter, r *http.Request) {
 	lang, country := getParams(r)
 	orderID := r.URL.Query().Get("id")
-
-	// Usamos el campo CurrentCat del struct PageData para enviar el ID del pedido
-	// y no tener que modificar el struct original.
 	renderTemplate(w, "success.html", PageData{
 		PaisActual: country,
 		Idioma:     lang,
@@ -466,24 +441,36 @@ func successHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// [2] Usamos init() para cargar los datos una sola vez al "despertar" la función
+// --- VERCEL INIT & HANDLER ---
+
 func init() {
 	cargarDatos()
+
+	// Conexión a MongoDB
+	uri := os.Getenv("MONGODB_URI")
+	if uri != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		clientOptions := options.Client().ApplyURI(uri)
+		client, err := mongo.Connect(ctx, clientOptions)
+		if err == nil {
+			mgClient = client
+			log.Println("Conectado exitosamente a MongoDB")
+		} else {
+			log.Printf("Error conectando a MongoDB: %v", err)
+		}
+	} else {
+		log.Println("Advertencia: MONGODB_URI no configurada")
+	}
 }
 
-// [3] Esta es la función que Vercel ejecutará
 func Handler(w http.ResponseWriter, r *http.Request) {
 	mux := http.NewServeMux()
-
-	// Importante: En Vercel, la carpeta static se sirve diferente,
-	// pero para tus handlers de Go, el mux sigue igual:
 	mux.HandleFunc("/", homeHandler)
 	mux.HandleFunc("/producto", productHandler)
 	mux.HandleFunc("/shopping", shoppingHandler)
 	mux.HandleFunc("/checkout", checkoutHandler)
 	mux.HandleFunc("/api/process-checkout", apiCheckoutHandler)
 	mux.HandleFunc("/success", successHandler)
-
-	// [4] En lugar de ListenAndServe, delegamos la respuesta al mux
 	mux.ServeHTTP(w, r)
 }
