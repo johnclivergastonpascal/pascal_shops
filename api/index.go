@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"encoding/json"
@@ -466,11 +466,17 @@ func successHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func main() {
+// [2] Usamos init() para cargar los datos una sola vez al "despertar" la función
+func init() {
 	cargarDatos()
+}
+
+// [3] Esta es la función que Vercel ejecutará
+func Handler(w http.ResponseWriter, r *http.Request) {
 	mux := http.NewServeMux()
-	fs := http.FileServer(http.Dir("./static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	// Importante: En Vercel, la carpeta static se sirve diferente,
+	// pero para tus handlers de Go, el mux sigue igual:
 	mux.HandleFunc("/", homeHandler)
 	mux.HandleFunc("/producto", productHandler)
 	mux.HandleFunc("/shopping", shoppingHandler)
@@ -478,6 +484,6 @@ func main() {
 	mux.HandleFunc("/api/process-checkout", apiCheckoutHandler)
 	mux.HandleFunc("/success", successHandler)
 
-	log.Printf("🚀 Tienda iniciada en http://localhost%s", Port)
-	log.Fatal(http.ListenAndServe(Port, mux))
+	// [4] En lugar de ListenAndServe, delegamos la respuesta al mux
+	mux.ServeHTTP(w, r)
 }
