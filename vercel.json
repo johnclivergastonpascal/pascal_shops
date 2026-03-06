@@ -3,21 +3,16 @@
   "builds": [
     {
       "src": "api/index.go",
-      "use": "@vercel/go"
-    },
-    {
-      "src": "static/**",
-      "use": "@vercel/static"
+      "use": "@vercel/go",
+      "config": {
+        "includeFiles": [
+          "static/*.html",
+          "data/*.json"
+        ]
+      }
     }
   ],
   "rewrites": [
-    {
-      "source": "/static/(.*)",
-      "destination": "/static/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/api/index.go"
-    }
+    { "source": "/(.*)", "destination": "/api/index.go" }
   ]
 }
